@@ -1,0 +1,631 @@
+{
+  "name": "n8n_correo",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "in:inbox has:attachment"
+        },
+        "options": {
+          "dataPropertyAttachmentsPrefixName": "attachment_",
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -1024,
+        -128
+      ],
+      "id": "9cecd8b4-2c00-4720-af30-69d277820ba5",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "nihQdrjBDWUHLPNI",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst binaries = item.binary || {};\n\nconst key = Object.keys(binaries).find(k => {\n  const b = binaries[k];\n  const ruta = ((b.directory ? b.directory + '/' : '') + (b.fileName || '')).replace(/\\\\/g, '/');\n  return ruta.endsWith('word/document.xml');\n});\n\nif (!key) {\n  const archivos = Object.entries(binaries).map(([k, b]) => `${k}: ${(b.directory || '')}/${b.fileName}`);\n  throw new Error('No se encontró word/document.xml. Archivos: ' + archivos.join(' | '));\n}\n\nconst buffer = await this.helpers.getBinaryDataBuffer(0, key);\n\nconst texto = buffer.toString('utf8')\n  .replace(/<\\/w:p>/g, '\\n')\n  .replace(/<w:tab\\/>/g, '\\t')\n  .replace(/<w:br\\/>/g, '\\n')\n  .replace(/<[^>]+>/g, '')\n  .replace(/&amp;/g, '&')\n  .replace(/&lt;/g, '<')\n  .replace(/&gt;/g, '>')\n  .replace(/&quot;/g, '\"')\n  .replace(/&apos;/g, \"'\")\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\nreturn [{ json: { text: texto } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        -272
+      ],
+      "id": "925fd08f-0559-4b98-958e-57c4c21cb264",
+      "name": "Extraer el texto"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst bin = item.binary.attachment_0;\n\nbin.fileName = 'cv.zip';\nbin.fileExtension = 'zip';\nbin.mimeType = 'application/zip';\n\nreturn [item];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -608,
+        -272
+      ],
+      "id": "518aaf0d-0f14-4f7f-a077-32e0d71c9b14",
+      "name": "Comprimir"
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "attachment_0"
+      },
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        -432,
+        -272
+      ],
+      "id": "65fde439-03af-4671-a343-8d17f301b2dd",
+      "name": "Descromprimir"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.typesafe.ai/v1/systemone",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "=json",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "jsonBody": "={{ JSON.stringify({\n  model: \"jev-latest\",\n  state: $json.text || \"\",\n  questions: {\n    area_o_rol_principal: {\n      type: \"choice\",\n      instructions: \"Determina a qué área o rol principal se postula o se ajusta mejor el perfil del candidato basándote en su experiencia.\",\n      criteria: {\n        \"Desarrollo Software\": \"Programación, desarrollo web, backend, frontend, fullstack, APIs, arquitectura de software\",\n        \"Soporte TI\": \"Mesa de ayuda, soporte técnico, atención de incidentes, mantenimiento de equipos\",\n        \"Base de Datos\": \"Administración de bases de datos, DBA, SQL, procedimientos almacenados, migración de datos\",\n        \"Infraestructura\": \"Redes, servidores, cloud, DevOps, administración de sistemas, seguridad\"\n      }\n    },\n    cumple_experiencia: {\n      type: \"noul\",\n      instructions: \"¿El candidato tiene al menos 3 años de experiencia en el área de desarrollo de software o tecnología?\"\n    },\n    nivel_academico: {\n      type: \"choice\",\n      instructions: \"Determina el máximo nivel de escolaridad o titulación académica finalizada alcanzado por el candidato.\",\n      criteria: {\n        \"Maestría\": \"Título de Maestría, Magíster, Master, Posgrado de nivel de maestría finalizado\",\n        \"Especialización\": \"Título de Especialista, Especialización técnica o profesional finalizada\",\n        \"Profesional\": \"Título universitario de Pregrado, Profesional, Ingeniería, Licenciatura finalizado\",\n        \"Tecnólogo\": \"Título de Tecnología, Tecnólogo en desarrollo de software, sistemas o áreas afines finalizado\",\n        \"Técnico\": \"Título Técnico laboral, Técnico profesional o diplomas técnicos de institutos/SENA finalizado\"\n      }\n    }\n  }\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -272,
+        -80
+      ],
+      "id": "33c963dd-0fc0-460f-8354-32dd280f576a",
+      "name": "HTTP Request a Jev",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "oraVwsNsNieqagV2",
+          "name": "Token Jev"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "attachment_0",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.2,
+      "position": [
+        -592,
+        -96
+      ],
+      "id": "4a6d472b-5bb6-4d31-a288-a535fa69d5df",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "ccfd8c87-1986-4ff2-90c9-3bc13f1ba145",
+              "leftValue": "={{ $binary.attachment_0.fileName }}",
+              "rightValue": ".docx",
+              "operator": {
+                "type": "string",
+                "operation": "endsWith"
+              }
+            },
+            {
+              "id": "ebaec6c3-2e40-4c8b-b372-89af12ff47dd",
+              "leftValue": "={{ $binary.attachment_0.fileName }}",
+              "rightValue": ".doc",
+              "operator": {
+                "type": "string",
+                "operation": "endsWith"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        -816,
+        -128
+      ],
+      "id": "4432f97c-7572-42ee-8245-5ed397181ee6",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Gmail Trigger').item.json.id }}",
+        "labelIds": [
+          "Label_2966501877509806025"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        432,
+        -160
+      ],
+      "id": "a0ef0b30-58c1-4f41-8dc5-d6487e135390",
+      "name": "Agregar etiqueta de procesado",
+      "webhookId": "9b1fd9e5-e041-4996-9467-0501a996dd63",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "nihQdrjBDWUHLPNI",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.answers.area_o_rol_principal.choice }}",
+                    "rightValue": "Desarrollo Software",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "4304bc9f-2164-43dc-b09a-b0af602c29c7"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "58a20cb9-8eb3-4226-87a9-5575f6d2a4ba",
+                    "leftValue": "={{ $json.answers.area_o_rol_principal.choice }}",
+                    "rightValue": "Soporte TI",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "c5e1b40c-a774-4bd9-b19b-ff0861fc0432",
+                    "leftValue": "={{ $json.answers.area_o_rol_principal.choice }}",
+                    "rightValue": "Base de Datos",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "63fcdffd-1b15-4891-98d2-855d574fea03",
+                    "leftValue": "={{ $json.answers.area_o_rol_principal.choice }}",
+                    "rightValue": "Infraestructura",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.5,
+      "position": [
+        -64,
+        -176
+      ],
+      "id": "838f402f-5f8b-4fd4-8887-96c2ab0ceef0",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appjq6i2WN3Z8Baij",
+          "mode": "list",
+          "cachedResultName": "Candidatos",
+          "cachedResultUrl": "https://airtable.com/appjq6i2WN3Z8Baij"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl4r3EpnlmlNuG71",
+          "mode": "list",
+          "cachedResultName": "Aplicaciones",
+          "cachedResultUrl": "https://airtable.com/appjq6i2WN3Z8Baij/tbl4r3EpnlmlNuG71"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Nombre Candidato": "={{ $(\"Gmail Trigger\").item.json.from.value[0].name }}",
+            "Email": "={{ $(\"Gmail Trigger\").item.json.from.value[0].address }}",
+            "Área / Perfil": "={{ $json.answers.area_o_rol_principal.choice }}",
+            "Confianza IA": "={{ $json.answers.area_o_rol_principal.confidence }}",
+            "ID Mensaje Gmail": "={{ $(\"Gmail Trigger\").item.json.id }}",
+            "Fecha Postulación": "={{ $today.format('dd/MM/yyyy') }}",
+            "Cumple Experiencia": "={{ $json.answers.cumple_experiencia.noul >= 0.7 ? \"SI\" : \"NO\" }}",
+            "Dominio Técnico": "=",
+            "Formación Académica": "={{ $json.answers.nivel_academico.choice }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Nombre Candidato",
+              "displayName": "Nombre Candidato",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Área / Perfil",
+              "displayName": "Área / Perfil",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Cumple Experiencia",
+              "displayName": "Cumple Experiencia",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "SI",
+                  "value": "SI"
+                },
+                {
+                  "name": "NO",
+                  "value": "NO"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Dominio Técnico",
+              "displayName": "Dominio Técnico",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "SI",
+                  "value": "SI"
+                },
+                {
+                  "name": "NO",
+                  "value": "NO"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Formación Académica",
+              "displayName": "Formación Académica",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "SI",
+                  "value": "SI"
+                },
+                {
+                  "name": "NO",
+                  "value": "NO"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Confianza IA",
+              "displayName": "Confianza IA",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ID Mensaje Gmail",
+              "displayName": "ID Mensaje Gmail",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Fecha Postulación",
+              "displayName": "Fecha Postulación",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        208,
+        -160
+      ],
+      "id": "6ae85c57-9946-445a-8c41-95cbcf12a176",
+      "name": "Create a record",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "bPlSTTgfjZnAsSAK",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer el texto": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request a Jev",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comprimir": {
+      "main": [
+        [
+          {
+            "node": "Descromprimir",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Descromprimir": {
+      "main": [
+        [
+          {
+            "node": "Extraer el texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request a Jev",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Comprimir",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request a Jev": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agregar etiqueta de procesado": {
+      "main": [
+        []
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Create a record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create a record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create a record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create a record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a record": {
+      "main": [
+        [
+          {
+            "node": "Agregar etiqueta de procesado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "830d714c-4870-4b8f-a8f4-0b7d8b0cc75b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8a4eaced7fbe2bcf68ac111d4a155400f7e83125edfa7223642905db7c512a30"
+  },
+  "nodeGroups": [],
+  "id": "biVbY9DpcdzBhBp0",
+  "tags": []
+}

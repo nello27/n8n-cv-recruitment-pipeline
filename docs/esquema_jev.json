@@ -1,0 +1,31 @@
+{{ JSON.stringify({
+  model: "jev-latest",
+  state: $json.text || "",
+  questions: {
+    area_o_rol_principal: {
+      type: "choice",
+      instructions: "Determina a qué área o rol principal se postula o se ajusta mejor el perfil del candidato basándote en su experiencia.",
+      criteria: {
+        "Desarrollo Software": "Programación, desarrollo web, backend, frontend, fullstack, APIs, arquitectura de software",
+        "Soporte TI": "Mesa de ayuda, soporte técnico, atención de incidentes, mantenimiento de equipos",
+        "Base de Datos": "Administración de bases de datos, DBA, SQL, procedimientos almacenados, migración de datos",
+        "Infraestructura": "Redes, servidores, cloud, DevOps, administración de sistemas, seguridad"
+      }
+    },
+    cumple_experiencia: {
+      type: "noul",
+      instructions: "¿El candidato tiene al menos 3 años de experiencia en el área de desarrollo de software o tecnología?"
+    },
+    nivel_academico: {
+      type: "choice",
+      instructions: "Determina el máximo nivel de escolaridad o titulación académica finalizada alcanzado por el candidato.",
+      criteria: {
+        "Maestría": "Título de Maestría, Magíster, Master, Posgrado de nivel de maestría finalizado",
+        "Especialización": "Título de Especialista, Especialización técnica o profesional finalizada",
+        "Profesional": "Título universitario de Pregrado, Profesional, Ingeniería, Licenciatura finalizado",
+        "Tecnólogo": "Título de Tecnología, Tecnólogo en desarrollo de software, sistemas o áreas afines finalizado",
+        "Técnico": "Título Técnico laboral, Técnico profesional o diplomas técnicos de institutos/SENA finalizado"
+      }
+    }
+  }
+}) }}
