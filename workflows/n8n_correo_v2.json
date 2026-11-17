@@ -1,0 +1,883 @@
+{
+  "name": "n8n_correo",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "in:inbox has:attachment"
+        },
+        "options": {
+          "dataPropertyAttachmentsPrefixName": "attachment_",
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -1024,
+        -128
+      ],
+      "id": "9cecd8b4-2c00-4720-af30-69d277820ba5",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "nihQdrjBDWUHLPNI",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst binaries = item.binary || {};\n\nconst key = Object.keys(binaries).find(k => {\n  const b = binaries[k];\n  const ruta = ((b.directory ? b.directory + '/' : '') + (b.fileName || '')).replace(/\\\\/g, '/');\n  return ruta.endsWith('word/document.xml');\n});\n\nif (!key) {\n  const archivos = Object.entries(binaries).map(([k, b]) => `${k}: ${(b.directory || '')}/${b.fileName}`);\n  throw new Error('No se encontró word/document.xml. Archivos: ' + archivos.join(' | '));\n}\n\nconst buffer = await this.helpers.getBinaryDataBuffer(0, key);\n\nconst texto = buffer.toString('utf8')\n  .replace(/<\\/w:p>/g, '\\n')\n  .replace(/<w:tab\\/>/g, '\\t')\n  .replace(/<w:br\\/>/g, '\\n')\n  .replace(/<[^>]+>/g, '')\n  .replace(/&amp;/g, '&')\n  .replace(/&lt;/g, '<')\n  .replace(/&gt;/g, '>')\n  .replace(/&quot;/g, '\"')\n  .replace(/&apos;/g, \"'\")\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\nreturn [{ json: { text: texto } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        -336
+      ],
+      "id": "925fd08f-0559-4b98-958e-57c4c21cb264",
+      "name": "Extraer el texto"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst bin = item.binary.attachment_0;\n\nbin.fileName = 'cv.zip';\nbin.fileExtension = 'zip';\nbin.mimeType = 'application/zip';\n\nreturn [item];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        -336
+      ],
+      "id": "518aaf0d-0f14-4f7f-a077-32e0d71c9b14",
+      "name": "Comprimir"
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "attachment_0"
+      },
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        -576,
+        -336
+      ],
+      "id": "65fde439-03af-4671-a343-8d17f301b2dd",
+      "name": "Descromprimir"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.typesafe.ai/v1/systemone",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "=json",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "jsonBody": "={{ JSON.stringify({\n  model: \"jev-latest\",\n  state: $json.text || \"\",\n  questions: {\n    area_o_rol_principal: {\n      type: \"choice\",\n      instructions: \"Determina a qué área o rol principal se postula o se ajusta mejor el perfil del candidato basándote en su experiencia.\",\n      criteria: {\n        \"Desarrollo Software\": \"Programación, desarrollo web, backend, frontend, fullstack, APIs, arquitectura de software\",\n        \"Soporte TI\": \"Mesa de ayuda, soporte técnico, atención de incidentes, mantenimiento de equipos\",\n        \"Base de Datos\": \"Administración de bases de datos, DBA, SQL, procedimientos almacenados, migración de datos\",\n        \"Infraestructura\": \"Redes, servidores, cloud, DevOps, administración de sistemas, seguridad\"\n      }\n    },\n    cumple_experiencia: {\n      type: \"noul\",\n      instructions: \"¿El candidato tiene al menos 3 años de experiencia en el área de desarrollo de software o tecnología?\"\n    },\n    nivel_academico: {\n      type: \"choice\",\n      instructions: \"Determina el máximo nivel de escolaridad o titulación académica finalizada alcanzado por el candidato.\",\n      criteria: {\n        \"Maestría\": \"Título de Maestría, Magíster, Master, Posgrado de nivel de maestría finalizado\",\n        \"Especialización\": \"Título de Especialista, Especialización técnica o profesional finalizada\",\n        \"Profesional\": \"Título universitario de Pregrado, Profesional, Ingeniería, Licenciatura finalizado\",\n        \"Tecnólogo\": \"Título de Tecnología, Tecnólogo en desarrollo de software, sistemas o áreas afines finalizado\",\n        \"Técnico\": \"Título Técnico laboral, Técnico profesional o diplomas técnicos de institutos/SENA finalizado\"\n      }\n    }\n  }\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        160,
+        -144
+      ],
+      "id": "33c963dd-0fc0-460f-8354-32dd280f576a",
+      "name": "HTTP Request a Jev",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "oraVwsNsNieqagV2",
+          "name": "Token Jev"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "attachment_0",
+        "options": {
+          "keepSource": "both"
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.2,
+      "position": [
+        -640,
+        16
+      ],
+      "id": "4a6d472b-5bb6-4d31-a288-a535fa69d5df",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "ccfd8c87-1986-4ff2-90c9-3bc13f1ba145",
+              "leftValue": "={{ $binary.attachment_0.fileName }}",
+              "rightValue": ".docx",
+              "operator": {
+                "type": "string",
+                "operation": "endsWith"
+              }
+            },
+            {
+              "id": "ebaec6c3-2e40-4c8b-b372-89af12ff47dd",
+              "leftValue": "={{ $binary.attachment_0.fileName }}",
+              "rightValue": ".doc",
+              "operator": {
+                "type": "string",
+                "operation": "endsWith"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        -848,
+        -128
+      ],
+      "id": "4432f97c-7572-42ee-8245-5ed397181ee6",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Gmail Trigger').item.json.id }}",
+        "labelIds": [
+          "Label_2966501877509806025"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        -144
+      ],
+      "id": "a0ef0b30-58c1-4f41-8dc5-d6487e135390",
+      "name": "Agregar etiqueta de procesado",
+      "webhookId": "9b1fd9e5-e041-4996-9467-0501a996dd63",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "nihQdrjBDWUHLPNI",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.answers.area_o_rol_principal.choice }}",
+                    "rightValue": "Desarrollo Software",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "4304bc9f-2164-43dc-b09a-b0af602c29c7"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "58a20cb9-8eb3-4226-87a9-5575f6d2a4ba",
+                    "leftValue": "={{ $json.answers.area_o_rol_principal.choice }}",
+                    "rightValue": "Soporte TI",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "c5e1b40c-a774-4bd9-b19b-ff0861fc0432",
+                    "leftValue": "={{ $json.answers.area_o_rol_principal.choice }}",
+                    "rightValue": "Base de Datos",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "63fcdffd-1b15-4891-98d2-855d574fea03",
+                    "leftValue": "={{ $json.answers.area_o_rol_principal.choice }}",
+                    "rightValue": "Infraestructura",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.5,
+      "position": [
+        336,
+        -192
+      ],
+      "id": "838f402f-5f8b-4fd4-8887-96c2ab0ceef0",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appjq6i2WN3Z8Baij",
+          "mode": "list",
+          "cachedResultName": "Candidatos",
+          "cachedResultUrl": "https://airtable.com/appjq6i2WN3Z8Baij"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl4r3EpnlmlNuG71",
+          "mode": "list",
+          "cachedResultName": "Aplicaciones",
+          "cachedResultUrl": "https://airtable.com/appjq6i2WN3Z8Baij/tbl4r3EpnlmlNuG71"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Nombre Candidato": "={{ $(\"Gmail Trigger\").item.json.from.value[0].name }}",
+            "Email": "={{ $(\"Gmail Trigger\").item.json.from.value[0].address }}",
+            "Área / Perfil": "={{ $json.answers.area_o_rol_principal.choice }}",
+            "Confianza IA": "={{ $json.answers.area_o_rol_principal.confidence }}",
+            "ID Mensaje Gmail": "={{ $(\"Gmail Trigger\").item.json.id }}",
+            "Fecha Postulación": "={{ $today.toFormat('yyyy-MM-dd') }}",
+            "Cumple Experiencia": "={{ $json.answers.cumple_experiencia.noul >= 0.7 ? \"SI\" : \"NO\" }}",
+            "Dominio Técnico": "=",
+            "Formación Académica": "={{ $json.answers.nivel_academico.choice }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Nombre Candidato",
+              "displayName": "Nombre Candidato",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Área / Perfil",
+              "displayName": "Área / Perfil",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Cumple Experiencia",
+              "displayName": "Cumple Experiencia",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "SI",
+                  "value": "SI"
+                },
+                {
+                  "name": "NO",
+                  "value": "NO"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Dominio Técnico",
+              "displayName": "Dominio Técnico",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "SI",
+                  "value": "SI"
+                },
+                {
+                  "name": "NO",
+                  "value": "NO"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Formación Académica",
+              "displayName": "Formación Académica",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "SI",
+                  "value": "SI"
+                },
+                {
+                  "name": "NO",
+                  "value": "NO"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Confianza IA",
+              "displayName": "Confianza IA",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ID Mensaje Gmail",
+              "displayName": "ID Mensaje Gmail",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Fecha Postulación",
+              "displayName": "Fecha Postulación",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        608,
+        -144
+      ],
+      "id": "6ae85c57-9946-445a-8c41-95cbcf12a176",
+      "name": "Create a record",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "bPlSTTgfjZnAsSAK",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "26e91959-dd7d-4afb-b909-1f6d42d6367e",
+              "leftValue": "={{ ($json.text || '').trim().length }}",
+              "rightValue": 50,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        -320,
+        -320
+      ],
+      "id": "f7eb1616-5dda-4a1a-bc19-09000b0af7ef",
+      "name": "Word tiene texto"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "52744868-1d45-462f-8f71-da71dd9f3c4a",
+              "leftValue": "={{ ($json.text || '').trim().length }}",
+              "rightValue": 50,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        -416,
+        32
+      ],
+      "id": "6c13ec05-36d0-4b55-b9b2-ec8a67c18a1c",
+      "name": "PDF tiene texto"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/ocr/texto",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "attachment_0"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -48,
+        48
+      ],
+      "id": "dba79bb3-cba5-4acd-8bc3-64b235138c61",
+      "name": "HTTP Request",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: $json,\n  binary: $('Gmail Trigger').first().binary\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        -144
+      ],
+      "id": "064fad32-b90d-46b6-8f62-01c4ec7ae76d",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {
+    "Gmail Trigger": [
+      {
+        "json": {
+          "id": "1a1eb095161f2ec3",
+          "threadId": "1a1eb095161f2ec3",
+          "labelIds": [
+            "UNREAD",
+            "CATEGORY_PERSONAL",
+            "INBOX"
+          ],
+          "sizeEstimate": 195874,
+          "headers": {
+            "delivered-to": "Delivered-To: yesidolaya.a@gmail.com",
+            "received": "Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])\r\n        by mx.google.com with SMTPS id 00721157ae682-8b4fe000894sor7090287b3.3.2026.11.17.11.43.38\r\n        for <yesidolaya.a@gmail.com>\r\n        (Google Transport Security);\r\n        Tue, 17 Nov 2026 11:43:38 -0800 (PST)",
+            "x-received": "X-Received: by 2002:a05:690e:12cd:b0:67d:bc89:3005 with SMTP id\r\n 956f58d0204a3-67dd450c662mr289218d50.37.1794944618201; Tue, 17 Nov 2026\r\n 11:43:38 -0800 (PST)",
+            "arc-seal": "ARC-Seal: i=1; a=rsa-sha256; t=1794944618; cv=none;\r\n        d=google.com; s=arc-20260327;\r\n        b=hM3AMinUDZwDgFqaJiuc22+rg+Moj6Co4mzQr+QqkhFW4yVpcSDyPOcFzfqZPrQT9p\r\n         N0K2rlyCRaNMOUyJ3siZWVqZpX8kD/cjJOR3ri0aJSTNcPkHS9jGNdtJYTWmPFwWwYig\r\n         6V795nz4XSqHRYRq7KpY1z1BSh67WW1Qm8lrqWtZwtlnb2dU6D5EmJKr5HexJ4q9MXSZ\r\n         +YeUQf1ihDg2ZmwP615XzTdABmv+Y+5tJuNfKFLcToAK6HW6zGgUaorWRZoxnxrADYkC\r\n         VJQNPSN9JQOAswAXSF9Uf+DWPzTi/Z63wUwcV78qdpSmu0/CU1Ll6Uzt+865JVzx0Drh\r\n         DYaQ==",
+            "arc-message-signature": "ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20260327;\r\n        h=to:subject:message-id:date:from:mime-version:dkim-signature;\r\n        bh=dIEBKKqGVsQt1trnGsxsLlYuucxUx7kz5bHoYusrTls=;\r\n        fh=DrvmwoE//2JRhykwCNA9xnGy26MUUoVG2CiOK3PhocA=;\r\n        b=ikg6Bk7dYCViuyp0xXd7Hwsz4Vbtz7l5kNS9uoujctEM6dd/bZ0Vqu+0SVoFhPp1Ad\r\n         MabJ/8pax0r1AHCX1N3SR479oOcwhAf1PigloeJ9Iclnk3kpXHgR6JEJ6vAM0ysGEojY\r\n         mEGWVkcKe/BNUOv0p3WbL6EDVxk2ShZFctDXiKa5+VuZzc0wV/Hos4NJUm4Ds5QVThrM\r\n         13EvzBJj5gataiM9wRRbnIzXmz7Yv2ibS6RauqEfkW8k1PU0s4TI/vb5lbpKBCOSJJbi\r\n         CauJQfSLF5ziGN/PsfgcLpTM6RHx4mtS6p6f65+L9oOuybi8mdG/JWemdbVcUVxgq01E\r\n         C2yg==;\r\n        dara=google.com",
+            "arc-authentication-results": "ARC-Authentication-Results: i=1; mx.google.com; arc=none",
+            "return-path": "Return-Path: <yesid.olaya@gmail.com>",
+            "received-spf": "Received-SPF: pass (google.com: domain of yesid.olaya@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;",
+            "authentication-results": "Authentication-Results: mx.google.com;\r\n       dkim=pass header.i=@gmail.com header.s=20260707 header.b=yXWz4hdE;\r\n       arc=pass (i=1);\r\n       spf=pass (google.com: domain of yesid.olaya@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=yesid.olaya@gmail.com;\r\n       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;\r\n       dara=pass header.i=@gmail.com",
+            "dkim-signature": "DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;\r\n        d=gmail.com; s=20260707; t=1794944618; x=1795549418; dara=google.com;\r\n        h=content-type:to:subject:message-id:date:from:mime-version:from:to\r\n         :cc:subject:date:message-id:reply-to:content-type;\r\n        bh=dIEBKKqGVsQt1trnGsxsLlYuucxUx7kz5bHoYusrTls=;\r\n        b=yXWz4hdEasXaiw0LcSnN3etnykXlMQEwmJENIkJYr5Il9wuvLRijt6cH3ACYa8e64f\r\n         EdUnIdRWALo9MZu8tWHTpZqxbpt76kj/zJ4tHsOXot09Zq8sU4KTY6z75iUsjOUdo6Ff\r\n         gfix3t+PUnwjP19JBsOXFj2vPsusEyCMweHMACVK7HVs/AStWLax6CKO01dHiSUXa/ut\r\n         gfvyLerRaFeL3YUFVkY2kp3W1UVtrdprSUbimYMOsirwLoYAOkRY0KrqoQA+LBvto/w2\r\n         XGq1cEanOrWPpoIz/Emzm/4LkavzxNOLv5PfSo1yFk6ORIfravAzhu4pZ1SiqmwLawYI\r\n         0Qqw==",
+            "x-google-dkim-signature": "X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;\r\n        d=1e100.net; s=20260707; t=1794944618; x=1795549418;\r\n        h=content-type:to:subject:message-id:date:from:mime-version:x-gm-gg\r\n         :x-gm-message-state:from:to:cc:subject:date:message-id:reply-to\r\n         :content-type;\r\n        bh=dIEBKKqGVsQt1trnGsxsLlYuucxUx7kz5bHoYusrTls=;\r\n        b=MDWSZuawt+XFCVtq+ws80HTGHrrurXmAfxr2YBhStSvJNeB+kGVwv8gvpkIC0Pqit2\r\n         T/VItjA6wadTvG29mPT1uyic9tEY1hEKQmp1aX6UPkFBbC6azSv16crsEgfPp27tL0X/\r\n         lt0UgQaY5cSrnehsHGC+B8TVySJRUy1naZkxNbh+ahPcjnh/bZrsbZW9A3QXqaYwm5WV\r\n         L30NPg3lpkfCg4ydKemUi/23CmjlWuP/D3jUtHUk+5ZUHQ/zO1xz9wOcZIYlcNKUFMHB\r\n         lJ/SFOat1sC0HgxbVDHyV+ZRBBSpNYjmLbdBXpzHS/zeOAc2LieVharpnF/pyt4uW7Un\r\n         0Q5w==",
+            "x-gm-message-state": "X-Gm-Message-State: APuU4Z/MUezn9hwbEj9LVshGlBOko99sdyjIUPbBzqlV6RmDLqaGvBDk\r\n\t93eJzqjJ8yFFM1266IRHyRnik/VacApjyst08zkDrAOXNAzEXr+pt9tnIAfda8m/S65fxKuYboD\r\n\tW2KuS5uhvW1UhwkJkSuq5hFx53atHnPfguZRp",
+            "x-gm-gg": "X-Gm-Gg: AZFdTZcpABUROX65s5YV5li/4kl420djx1h5MYizdVW/IKo+4A1DpVHCOnb59HvHq5n\r\n\tZhn4JKzLRU8i6gIC3RmHesfPwuNZj7J+jnr3Jf329hTRz4KgAYsyOZAAavdg6pSZ/K62QKDakt9\r\n\taEztE3vTIy2BVslJ7IMd6L3uUW+ZxWGrPdTxzfFxoF/7vaKVQipd5MRtaqwFvDSPm1j/JljDiov\r\n\tnvu4N1Bm6fkhcL0wFtTU5wG6M80Vh1PYy1+S5DzWe4u3yY5h52hbNO97tgUULUQAb4MggVlKhHc\r\n\t3m1+xzp/5pGtT34Xl1vE1bWExTjusuPfu2h4f6zeLSqQwxrF8ehFIjqlsashNm9nmdVYHzywTfo\r\n\tPwiKgxOOh51DwNzXczy7le/T8KNn1HVR+Lj0QHHOEFYpyS6XS91yHwpTogroHO40YSt8=",
+            "mime-version": "MIME-Version: 1.0",
+            "from": "From: Ne ll <yesid.olaya@gmail.com>",
+            "date": "Date: Tue, 17 Nov 2026 14:43:20 -0500",
+            "x-gm-features": "X-Gm-Features: AclHuK90AVBmU7tq2nHEPF3T0TNI_N0rXk0TrTV1_bpK-ogpB9SUgdvShNcDjWY",
+            "message-id": "Message-ID: <CAJCj0_6cdOgiuS058U3c1Xw--9Y-HFcq3-axJ6NdrLrEae790w@mail.gmail.com>",
+            "subject": "Subject: PDF Cv",
+            "to": "To: yesidolaya.a@gmail.com",
+            "content-type": "Content-Type: multipart/mixed; boundary=\"0000000000005c649e06607e1cb8\""
+          },
+          "html": "<div dir=\"ltr\">Hoja en PDF</div>\n",
+          "text": "Hoja en PDF\n",
+          "textAsHtml": "<p>Hoja en PDF</p>",
+          "subject": "PDF Cv",
+          "date": "2026-11-17T19:43:20.000Z",
+          "to": {
+            "value": [
+              {
+                "address": "yesidolaya.a@gmail.com",
+                "name": ""
+              }
+            ],
+            "html": "<span class=\"mp_address_group\"><a href=\"mailto:yesidolaya.a@gmail.com\" class=\"mp_address_email\">yesidolaya.a@gmail.com</a></span>",
+            "text": "yesidolaya.a@gmail.com"
+          },
+          "from": {
+            "value": [
+              {
+                "address": "yesid.olaya@gmail.com",
+                "name": "Ne ll"
+              }
+            ],
+            "html": "<span class=\"mp_address_group\"><span class=\"mp_address_name\">Ne ll</span> &lt;<a href=\"mailto:yesid.olaya@gmail.com\" class=\"mp_address_email\">yesid.olaya@gmail.com</a>&gt;</span>",
+            "text": "\"Ne ll\" <yesid.olaya@gmail.com>"
+          },
+          "messageId": "<CAJCj0_6cdOgiuS058U3c1Xw--9Y-HFcq3-axJ6NdrLrEae790w@mail.gmail.com>"
+        },
+        "binary": {
+          "attachment_0": {
+            "mimeType": "application/pdf",
+            "fileType": "pdf",
+            "fileExtension": "pdf",
+            "data": "filesystem-v2",
+            "fileName": "Hoja_de_vida_imagen.pdf",
+            "id": "filesystem-v2:workflows/biVbY9DpcdzBhBp0/executions/temp/binary_data/c79f4edd-7ee9-4b67-bf0b-7a076d82fb39",
+            "fileSize": "138 kB",
+            "bytes": 137685
+          }
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer el texto": {
+      "main": [
+        [
+          {
+            "node": "Word tiene texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comprimir": {
+      "main": [
+        [
+          {
+            "node": "Descromprimir",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Descromprimir": {
+      "main": [
+        [
+          {
+            "node": "Extraer el texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "PDF tiene texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Comprimir",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request a Jev": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agregar etiqueta de procesado": {
+      "main": [
+        []
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Create a record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create a record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create a record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create a record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a record": {
+      "main": [
+        [
+          {
+            "node": "Agregar etiqueta de procesado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Word tiene texto": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request a Jev",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF tiene texto": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request a Jev",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request a Jev",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "32cfd6da-aecd-4b18-83bf-cb0f1ecfc13e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8a4eaced7fbe2bcf68ac111d4a155400f7e83125edfa7223642905db7c512a30"
+  },
+  "nodeGroups": [],
+  "id": "biVbY9DpcdzBhBp0",
+  "tags": []
+}
